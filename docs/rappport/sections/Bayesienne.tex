@@ -1,0 +1,109 @@
+
+
+\section{Principes de la classiﬁcation bayésienne}
+
+Les méthodes d’apprentissage bayésien partent d’un ensemble de données d’observation noté \(X\) et d’un ensemble de classes \(c\). Dans ce cadre, une observation est modélisée sous forme vectorielle, et l’on peut définir une probabilité a priori d’observer le vecteur \(X\), notée \(P(X)\), ainsi qu’une probabilité a priori d’appartenance à une classe \(c\), notée \(P(c)\), comme indiqué dans \eqref{eq:priorX} et \eqref{eq:priorc}. On peut également exprimer la probabilité conjointe \(P(X,c)\), donnée en \eqref{eq:joint}.
+
+\begin{equation}
+\label{eq:priorX}
+P(X)
+\end{equation}
+
+\begin{equation}
+\label{eq:priorc}
+P(c)
+\end{equation}
+
+\begin{equation}
+\label{eq:joint}
+P(X,c)
+\end{equation}
+
+En utilisant le concept de probabilité conditionnelle, il est possible d’exprimer la probabilité d’observer les données \(X\) sachant que l’observation appartient à la classe \(c\). Cette probabilité conditionnelle, notée \(P(X\mid c)\), est aussi appelée vraisemblance (conditionnelle), comme en \eqref{eq:likelihood}.
+
+\begin{equation}
+\label{eq:likelihood}
+P(X\mid c)
+\end{equation}
+
+La probabilité conjointe peut alors s’écrire comme le produit de la vraisemblance et de l’a priori de classe, ce qui donne \eqref{eq:joint_factorization}.
+
+\begin{equation}
+\label{eq:joint_factorization}
+P(X,c)=P(X\mid c)\,P(c)
+\end{equation}
+
+Enfin, en appliquant le théorème de Bayes, on obtient une probabilité a posteriori \(P(c\mid X)\), qui exprime la probabilité qu’une observation \(X\) appartienne à une classe spécifique \(c\) dans le domaine du système. Cette relation est donnée par \eqref{eq:bayes}.
+
+\begin{equation}
+\label{eq:bayes}
+P(c\mid X)=\frac{P(X\mid c)\,P(c)}{P(X)}
+\end{equation}
+
+
+L’apprentissage bayésien consiste donc en la détermination empirique des lois de probabilité, référée à partir d’un ensemble de données statistiques, réalisée sur un ensemble de données d’apprentissage étiquetées \(\{X_i,\;c(X_i)\}\). La détermination de la classe \(c\) donne lieu à deux formes de sélection en fonction du critère d’optimisation employé.
+
+\subsection{Maximum A Posteriori (MAP)}
+
+On se focalise sur un critère de maximisation de la probabilité a posteriori, de sorte qu’à partir d’une observation \(X\), on cherche la sélection de la classe \(c\) la plus probable \cite{onera_ensta_estimateur_bayesien_slides}, suivant l’expression \eqref{eq:cmap}.
+
+\begin{equation}
+\label{eq:cmap}
+c_{\mathrm{MAP}}^{\ast}(X)=\arg\max_{c\in C} P(c\mid X).
+\end{equation}
+
+En utilisant des logarithmes (utile numériquement et pour l’analyse), le critère MAP peut s’écrire comme indiqué en \eqref{eq:cmap_log}.
+
+\begin{equation}
+\label{eq:cmap_log}
+c^{*}_{\mathrm{MAP}}(X)=\arg\max_{c\in C}\Bigl(\log P(X\mid c)+\log P(c)\Bigr).
+\end{equation}
+
+La probabilité a priori peut être estimée à partir de la base de données d’entraînement par la relation \eqref{eq:prior_est}, où \(N_c\) désigne le nombre d’exemples appartenant à la classe \(c\), défini en \eqref{eq:Nc_def}.
+
+\begin{equation}
+\label{eq:prior_est}
+P(c)=\frac{N_c}{N}.
+\end{equation}
+
+\begin{equation}
+\label{eq:Nc_def}
+N_c=\left|\left\{\,i:\;c_i=c\,\right\}\right|.
+\end{equation}
+
+De son côté, pour la vraisemblance, on ajuste les données observées à un modèle \(P(X\mid c)\) pour chaque classe (par exemple : histogramme, Naive Bayes, ou modèle gaussien).
+
+
+\subsection{Maximum Vraisemblance (ML)}
+De son côté, le critère de ML (Maximum Likelihood) cherche la sélection de la classe qui rend la donnée \(X\) d’intérêt pour la classification la plus vraisemblable, au moyen de l’expression de maximisation \eqref{eq:cml}.
+
+\begin{equation}
+\label{eq:cml}
+c_{\mathrm{ML}}^{\ast}(X)=\arg\max_{c\in C} P(X\mid c).
+\end{equation}
+
+Il suit ainsi un principe de recherche de la classe pour laquelle la donnée observée \(X\) \cite{yuille_bayes_decision_theory}.
+
+Dans la représentation logarithmique de la maximisation, il devient évident que l’on conserve l’effet de la vraisemblance, et qu’à la différence du MAP il n’y a pas d’influence de la distribution a priori de la classe, ce qui conduit à \eqref{eq:cml_log}.
+
+\begin{equation}
+\label{eq:cml_log}
+c_{\mathrm{ML}}^{\ast}(X)=\arg\max_{c\in C}\log P(X\mid c).
+\end{equation}
+
+Cela rend compte du fait que la principale différence entre ML et MAP est le déplacement des limites de sélection à cause de la nature de la fonction a priori pour chaque classe. Ainsi, dans le cas d’une classification à deux classes, ML utiliserait le seuil \(0\) défini en \eqref{eq:ml_threshold}.
+
+\begin{equation}
+\label{eq:ml_threshold}
+\log P(X\mid c_1)-\log P(X\mid c_2) > 0.
+\end{equation}
+
+Et pour MAP, on obtient le critère \eqref{eq:map_threshold}.
+
+\begin{equation}
+\label{eq:map_threshold}
+\log P(X\mid c_1)-\log P(X\mid c_2) > \log\frac{P(c_2)}{P(c_1)}.
+\end{equation}
+
+Cela implique que si \(P(c_1)\) est grande, alors \(\log\frac{P(c_2)}{P(c_1)}\) est négatif, et MAP a besoin de moins d’évidence (en termes de likelihood) pour choisir \(c_1\). On conclut donc que MAP, à la différence de ML, considère dans la classification le fait que certaines classes, par leur propre dynamique et nature, sont plus probables que d’autres, ce qui peut produire un effet en classification qui n’est pas désiré lorsque les classes sont, par exemple, déséquilibrées.
+
