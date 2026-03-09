@@ -107,3 +107,487 @@ Et pour MAP, on obtient le critère \eqref{eq:map_threshold}.
 
 Cela implique que si \(P(c_1)\) est grande, alors \(\log\frac{P(c_2)}{P(c_1)}\) est négatif, et MAP a besoin de moins d’évidence (en termes de likelihood) pour choisir \(c_1\). On conclut donc que MAP, à la différence de ML, considère dans la classification le fait que certaines classes, par leur propre dynamique et nature, sont plus probables que d’autres, ce qui peut produire un effet en classification qui n’est pas désiré lorsque les classes sont, par exemple, déséquilibrées.
 
+
+\subsection{Application `a la classification bayésienne des pixels}
+
+Dans le contexte de la classification supervisée d’images par classification bayésienne, la définition de l’espace d’observation correspond à un choix méthodologique central, puisqu’elle conditionne la séparabilité statistique entre les classes et, par conséquent, la qualité du modèle probabiliste appris et implémenté. Comme première approche, il est proposé d’analyser la représentation de chaque pixel en termes colorimétriques, et d’étudier différents espaces de représentation, spécifiquement RGB, HSV et Y$'$CbCr.
+
+\subsubsection{Espace RGB}
+
+Du point de vue colorimétrique, un espace RGB est une représentation du signal coloré avec des composantes associées aux trois primaires, ce qui permet de représenter tout stimulus visible au moyen de valeurs tristimulus. Il peut donc être compris comme une base tridimensionnelle. RGB représente une famille d’espaces qui n’est complètement spécifiée que lorsque les chromaticités des primaires, le blanc de référence et la fonction de transfert entre le signal linéaire et le signal codé sont fixés.
+
+Dans cette représentation, chaque pixel est modélisé sous la forme d’un vecteur tridimensionnel, comme indiqué dans l’équation~\eqref{eq:rgb_vector} :
+
+\begin{equation}
+\mathbf{x}_{RGB}(u,v)=
+\begin{bmatrix}
+R(u,v)\\
+G(u,v)\\
+B(u,v)
+\end{bmatrix},
+\label{eq:rgb_vector}
+\end{equation}
+
+où $R$, $G$ et $B$ décrivent les contributions associées aux primaires rouge, verte et bleue. Dans l’implémentation considérée, l’extraction des composantes RGB ne constitue pas une transformation colorimétrique additionnelle, mais une simple permutation de canaux à partir de l’image BGR chargée par OpenCV. En effet, si le signal d’entrée est représenté comme dans l’équation~\eqref{eq:bgr_vector} :
+
+\begin{equation}
+\mathbf{x}_{BGR}(u,v)=
+\begin{bmatrix}
+B(u,v)\\
+G(u,v)\\
+R(u,v)
+\end{bmatrix},
+\label{eq:bgr_vector}
+\end{equation}
+
+alors l’opération \texttt{cv2.cvtColor(img\_bgr, cv2.COLOR\_BGR2RGB)} \cite{opencv_color_conversions} est équivalente à la transformation exprimée dans l’équation~\eqref{eq:permutation_rgb} :
+
+\begin{equation}
+\mathbf{x}_{RGB}=P\,\mathbf{x}_{BGR},
+\qquad
+P=
+\begin{bmatrix}
+0 & 0 & 1\\
+0 & 1 & 0\\
+1 & 0 & 0
+\end{bmatrix}.
+\label{eq:permutation_rgb}
+\end{equation}
+
+Par la suite, \texttt{cv2.split} permet d’obtenir trois champs scalaires monobandes, correspondant aux projections du vecteur couleur sur la base canonique RGB. En conséquence, les images exportées sous les noms \texttt{R.png}, \texttt{G.png} et \texttt{B.png} ne représentent pas de nouvelles couleurs, mais des cartes d’intensité de chaque canal.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/rgb/original.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/rgb/R.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/rgb/G.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/rgb/B.png}
+\caption{Composantes de l'espace RGB (image originale, R, G, B).}
+\label{fig:rgb_components}
+\end{figure}
+
+
+\subsubsection{ Espace HSV}
+
+Pour sa part, l’espace HSV constitue une reparamétrisation non linéaire du cube RGB en fonction de la teinte, de la saturation et de la valeur, et il part du modèle hexaconique dans lequel le cube RGB est projeté le long de la diagonale achromatique. Dans ce cadre, la teinte est employée comme une description de la position angulaire sur le contour chromatique, et la saturation comme une quantification de l’éloignement par rapport à l’axe des gris. Smith montre en outre que $V$ peut être interprété comme la hauteur de la barre chromatique dominante \cite{smith_color_gamut_transform_pairs}.
+
+Dans le code implémenté, cette transformation est réalisée au moyen d’OpenCV avec \texttt{cv2.COLOR\_BGR2HSV} \cite{opencv_color_conversions}. Les composantes BGR sont d’abord converties en virgule flottante et normalisées dans l’intervalle $[0,1]$, après quoi les équations du modèle HSV sont appliquées. La composante valeur est définie par l’équation~\eqref{eq:hsv_value} :
+
+\begin{equation}
+V=\max(R,G,B),
+\label{eq:hsv_value}
+\end{equation}
+
+tandis que la saturation est donnée par l’équation~\eqref{eq:hsv_saturation} :
+
+\begin{equation}
+S=
+\begin{cases}
+\dfrac{V-\min(R,G,B)}{V}, & V\neq 0,\\[4pt]
+0, & V=0,
+\end{cases}
+\label{eq:hsv_saturation}
+\end{equation}
+
+et la teinte par l’équation~\eqref{eq:hsv_hue} :
+
+\begin{equation}
+H=
+\begin{cases}
+\dfrac{60(G-B)}{V-\min(R,G,B)}, & V=R,\\[6pt]
+120+\dfrac{60(B-R)}{V-\min(R,G,B)}, & V=G,\\[6pt]
+240+\dfrac{60(R-G)}{V-\min(R,G,B)}, & V=B,\\[6pt]
+0, & R=G=B.
+\end{cases}
+\label{eq:hsv_hue}
+\end{equation}
+
+Si $H<0$, OpenCV ajoute $360$ degrés afin de replacer la teinte dans l’intervalle angulaire standard \cite{opencv_color_conversions}.
+
+Néanmoins, l’image de sortie reste codée sur 8 bits et ne stocke pas la teinte en degrés physiques, mais dans une version quantifiée. La documentation indique que, pour les images sur 8 bits, l’échelle de sortie est donnée par l’équation~\eqref{eq:hsv_scaling} :
+
+\begin{equation}
+V \leftarrow 255V,
+\qquad
+S \leftarrow 255S,
+\qquad
+H \leftarrow \frac{H}{2},
+\label{eq:hsv_scaling}
+\end{equation}
+
+de sorte que, en pratique, le canal exporté par \texttt{H.png} appartient à l’intervalle discret indiqué dans l’équation~\eqref{eq:hsv_range_h} :
+
+\begin{equation}
+H_{\text{OpenCV}} \in \{0,\dots,179\},
+\label{eq:hsv_range_h}
+\end{equation}
+
+tandis que $S$ et $V$ sont codés dans $\{0,\dots,255\}$ \cite{opencv_color_conversions}. C’est pour cette raison qu’il n’est pas possible d’interpréter directement la teinte stockée comme un angle en degrés, mais plutôt comme une résolution discrétisée dans laquelle chacun des niveaux de teinte correspond approximativement à deux degrés.
+
+HSV présente un intérêt particulier dans la mesure où il permet le découplage des attributs chromatiques perceptifs, ce qui peut être utile pour faciliter la discrimination des classes qui peuvent être davantage différenciées par la teinte que par l’intensité absolue.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/hsv/original.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/hsv/H.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/hsv/S.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/hsv/V.png}
+\caption{Composantes de l'espace HSV (image originale, H, S, V).}
+\label{fig:hsv_components}
+\end{figure}
+
+\subsubsection{ Espace $(Y',Cr,Cb)$}
+
+Se obtiennent les composantes Y$'$CbCr dans l’ordre $(Y',Cr,Cb)$, puisque la transformation appliquée est \texttt{cv2.COLOR\_BGR2YCrCb}, où OpenCV organise en interne la sortie comme la luminance $Y'$, la chrominance rouge-différence $Cr$ et la chrominance bleue-différence $Cb$. Le code compense correctement ce détail en dépaquetant la sortie sous la forme \texttt{y\_channel}, \texttt{cr\_channel}, \texttt{cb\_channel}, puis en la réordonnant lors de l’enregistrement de \texttt{Cb.png} et \texttt{Cr.png}.
+
+La documentation d’OpenCV décrit cette conversion comme \textit{RGB $\leftrightarrow$ YCrCb JPEG (or YCC)} \cite{opencv_ycrcb_conversion} et la définit par les équations~\eqref{eq:y_luma} à~\eqref{eq:cb_component} :
+
+\begin{equation}
+Y' = 0.299R + 0.587G + 0.114B,
+\label{eq:y_luma}
+\end{equation}
+
+\begin{equation}
+Cr = 0.713(R - Y') + \delta,
+\label{eq:cr_component}
+\end{equation}
+
+\begin{equation}
+Cb = 0.564(B - Y') + \delta,
+\label{eq:cb_component}
+\end{equation}
+
+où
+\begin{equation}
+\delta =
+\begin{cases}
+128, & \text{pour les images sur 8 bits},\\
+32768, & \text{pour les images sur 16 bits},\\
+0.5, & \text{en virgule flottante}.
+\end{cases}
+\label{eq:delta_ycrcb}
+\end{equation}
+
+La transformation inverse est définie par les équations~\eqref{eq:inverse_r} à~\eqref{eq:inverse_b} :
+
+\begin{equation}
+R = Y' + 1.403(Cr - \delta),
+\label{eq:inverse_r}
+\end{equation}
+
+\begin{equation}
+G = Y' - 0.714(Cr - \delta) - 0.344(Cb - \delta),
+\label{eq:inverse_g}
+\end{equation}
+
+\begin{equation}
+B = Y' + 1.773(Cb - \delta).
+\label{eq:inverse_b}
+\end{equation}
+
+Ces équations montrent que la représentation est essentiellement une transformation affine de l’espace RGB, suivie d’un recentrage des chrominances.
+
+Le principal avantage de cette transformation réside dans le découplage partiel entre l’information de luminance apparente et l’information chromatique différentielle, ce qui peut conduire à des distributions de couleur plus compactes dans le sous-espace $(Cr,Cb)$. En outre, contrairement au cas de HSV, elle n’introduit pas une coordonnée angulaire singulière, mais fonctionne essentiellement comme une transformation linéaire des canaux d’entrée.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/ycbcr/original.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/ycbcr/Y.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/ycbcr/Cb.png}
+\includegraphics[width=0.23\linewidth]{../../Bayes/components_output/Parrots/ycbcr/Cr.png}
+\caption{Composantes de l'espace Y'CbCr (image originale, Y', Cb, Cr).}
+\label{fig:ycbcr_components}
+\end{figure}
+
+L’utilisation exclusive de la couleur renvoie à l’implémentation d’un vecteur de faible dimension comme base d’observation, tel que défini dans l’équation~\eqref{eq:color_vectors} :
+
+\begin{equation}
+\mathbf{x} \in \left\{
+\begin{bmatrix}
+R\\
+G\\
+B
+\end{bmatrix},
+\begin{bmatrix}
+H\\
+S\\
+V
+\end{bmatrix},
+\begin{bmatrix}
+Y\\
+Cb\\
+Cr
+\end{bmatrix}
+\right\}.
+\label{eq:color_vectors}
+\end{equation}
+
+\subsubsection{Couleurs comme espace d’observation}
+
+
+Le principal problème est que, dans une telle base, il n’est pas possible de décrire de manière suffisante la classe réelle du pixel, en raison des limitations liées à la forte dépendance à l’illumination lorsqu’une représentation fondée uniquement sur la couleur est employée. Ainsi, la couleur identifiée peut varier sous l’effet des ombres, de l’intensité lumineuse, des reflets, du déséquilibre des blancs et de la réponse du capteur, ce qui rend très probable qu’un même objet, ou des objets appartenant à une même classe, occupent des régions différentes de l’espace colorimétrique selon les conditions d’acquisition de l’image.
+
+De même, deux classes distinctes peuvent être associées à des couleurs similaires, ou bien une même classe peut présenter une large variabilité chromatique. En termes statistiques, cela peut produire un chevauchement entre les distributions.
+
+La description uniquement fondée sur la couleur des pixels peut également être liée à une absence d’information spatiale, étant donné que chaque pixel ne contient pas d’information sur son voisinage dans l’image. Par conséquent, une représentation locale basée uniquement sur la couleur peut conduire à des résultats bruités ou à des pixels mal classés.
+
+Enfin, une représentation de ce type peut être insuffisante, puisque des régions ayant des significations différentes peuvent partager une même couleur tout en différant par leur texture, leurs contours, leur orientation ou leur forme.
+
+Compte tenu des limitations d’un espace uniquement colorimétrique, il est proposé de définir un espace d’observation efficace combinant information photométrique et information géométrique. Il est ainsi proposé de partir d’une description construite à partir des composantes de couleur déjà référencées, mais complétée par des caractéristiques différentielles locales. Parmi celles-ci, on peut considérer des éléments comme le gradient, défini par les équations~\eqref{eq:gradient_vector} et~\eqref{eq:gradient_norm},
+
+\begin{equation}
+\nabla I=
+\begin{bmatrix}
+I_x\\
+I_y
+\end{bmatrix},
+\label{eq:gradient_vector}
+\end{equation}
+
+\begin{equation}
+I_g=\|\nabla I\|=\sqrt{I_x^2+I_y^2},
+\label{eq:gradient_norm}
+\end{equation}
+
+qui mesure l’intensité des variations locales et permet de décrire les contours et les transitions. Il est également possible de prendre en considération des caractéristiques de second ordre, comme celles obtenues à partir de la matrice hessienne donnée par l’équation~\eqref{eq:hessian_matrix},
+
+\begin{equation}
+H_I=
+\begin{bmatrix}
+I_{xx} & I_{xy}\\
+I_{xy} & I_{yy}
+\end{bmatrix},
+\label{eq:hessian_matrix}
+\end{equation}
+
+dont les valeurs propres décrivent les courbures principales de l’image. Si l’on note ces valeurs propres par \(\lambda_I\) et \(\Lambda_I\), avec \(\lambda_I\leq \Lambda_I\), celles-ci peuvent s’écrire comme
+
+\begin{equation}
+\lambda_I=\beta_I-\alpha_I,
+\qquad
+\Lambda_I=\beta_I+\alpha_I,
+\label{eq:eigenvalues_hessian}
+\end{equation}
+
+où
+
+\begin{equation}
+\beta_I=\frac{1}{2}(I_{xx}+I_{yy}),
+\qquad
+\alpha_I=\frac{1}{2}\sqrt{(I_{xx}-I_{yy})^2+4I_{xy}^2}.
+\label{eq:alpha_beta_hessian}
+\end{equation}
+
+À partir de cette matrice, on peut extraire le laplacien, défini par l’équation~\eqref{eq:laplacian},
+
+\begin{equation}
+\Delta I=I_{xx}+I_{yy}=\lambda_I+\Lambda_I,
+\label{eq:laplacian}
+\end{equation}
+
+la norme de Frobenius, définie par l’équation~\eqref{eq:frobenius_norm},
+
+\begin{equation}
+\|H_I\|_F=\sqrt{I_{xx}^2+I_{yy}^2+2I_{xy}^2}
+=
+\sqrt{\lambda_I^2+\Lambda_I^2},
+\label{eq:frobenius_norm}
+\end{equation}
+
+et le déterminant, donné par l’équation~\eqref{eq:hessian_determinant},
+
+\begin{equation}
+\det(H_I)=I_{xx}I_{yy}-I_{xy}^2=\lambda_I\Lambda_I.
+\label{eq:hessian_determinant}
+\end{equation}
+
+Ces quantités sont utiles pour l’identification efficace de zones planes, de rampes, de structures elliptiques, de crêtes, de \textit{blobs} et d’autres motifs géométriques. En effet, lorsque
+
+\begin{equation}
+\|\nabla I\|\simeq 0,
+\qquad
+\|H_I\|_F\simeq 0,
+\label{eq:plateau_condition}
+\end{equation}
+
+on peut considérer que l’on est en présence d’une zone plane ou \textit{plateau}. En revanche, lorsque
+
+\begin{equation}
+\|\nabla I\|\gg 0,
+\qquad
+\|H_I\|_F\simeq 0,
+\label{eq:ramp_condition}
+\end{equation}
+
+la structure locale correspond à une rampe ou \textit{rampe}. Enfin, lorsque
+
+\begin{equation}
+\|H_I\|_F\gg 0,
+\label{eq:curvature_condition}
+\end{equation}
+
+on a une structure gouvernée par la courbure, dont la nature dépend du signe du produit \(\lambda_I\Lambda_I\) : si
+
+\begin{equation}
+\lambda_I\Lambda_I>0,
+\label{eq:elliptic_condition}
+\end{equation}
+
+la structure est de type elliptique ou \textit{blob}, tandis que si
+
+\begin{equation}
+\lambda_I\Lambda_I<0,
+\label{eq:saddle_condition}
+\end{equation}
+
+la configuration est de type \textit{selle} ou, dans certains cas, tubulaire ou de crête.
+
+Par ailleurs, il est important de noter que ces dérivées ne doivent pas être comprises uniquement comme des quantités numériques isolées, mais comme une véritable représentation locale du voisinage du pixel. En effet, le comportement local de l’image dans un voisinage de \((x_0,y_0)\) peut être approché au moyen d’un développement de Taylor du second ordre,
+
+\begin{equation}
+I(x_0+\varepsilon,y_0+\eta)
+\approx
+I(x_0,y_0)
++
+\nabla I(x_0,y_0)
+\begin{bmatrix}
+\varepsilon\\
+\eta
+\end{bmatrix}
++
+\frac{1}{2}
+\begin{bmatrix}
+\varepsilon & \eta
+\end{bmatrix}
+H_I(x_0,y_0)
+\begin{bmatrix}
+\varepsilon\\
+\eta
+\end{bmatrix},
+\label{eq:taylor_second_order}
+\end{equation}
+
+ce qui montre que l’intensité, le gradient et la hessienne constituent une représentation compacte et géométriquement interprétable de l’environnement local.
+
+De plus, le gradient ne mesure pas seulement l’intensité des variations locales, mais définit également la direction de pente maximale. Si l’on considère un vecteur unitaire \(v\), la dérivée directionnelle est donnée par
+
+\begin{equation}
+\frac{\partial I}{\partial v}=\nabla I\cdot v.
+\label{eq:directional_derivative}
+\end{equation}
+
+En introduisant le repère local \((g,t)\), avec
+
+\begin{equation}
+g=\frac{\nabla I}{\|\nabla I\|},
+\qquad
+t=g^{\perp},
+\label{eq:local_frame}
+\end{equation}
+
+on obtient
+
+\begin{equation}
+I_g=\|\nabla I\|,
+\qquad
+I_t=0.
+\label{eq:local_frame_derivatives}
+\end{equation}
+
+De cette manière, \(g\) correspond à la direction principale de variation et \(t\) à la direction de l’isophote ou ligne de niveau locale.
+
+Dans ce même repère local, les dérivées secondes dans la direction du gradient et dans la direction tangentielle peuvent s’exprimer comme
+
+\begin{equation}
+I_{gg}=g^T H_I g
+=
+\frac{I_{xx}I_x^2+2I_{xy}I_xI_y+I_{yy}I_y^2}{I_x^2+I_y^2},
+\label{eq:Igg}
+\end{equation}
+
+\begin{equation}
+I_{tt}=
+\frac{I_{xx}I_y^2-2I_{xy}I_xI_y+I_{yy}I_x^2}{I_x^2+I_y^2}.
+\label{eq:Itt}
+\end{equation}
+
+De plus, ces quantités vérifient la relation
+
+\begin{equation}
+I_{gg}+I_{tt}=I_{xx}+I_{yy}=\Delta I.
+\label{eq:laplacian_local_frame}
+\end{equation}
+
+Cela permet d’interpréter le laplacien comme une quantité invariante par rotation. Si, en outre, la courbure de l’isophote est faible, c’est-à-dire si
+
+\begin{equation}
+I_{tt}\approx 0,
+\label{eq:weak_isophote_curvature}
+\end{equation}
+
+alors on a approximativement
+
+\begin{equation}
+I_{gg}\approx \Delta I,
+\label{eq:Igg_laplacian_approx}
+\end{equation}
+
+et la condition de contour peut être approchée par
+
+\begin{equation}
+\Delta I=0.
+\label{eq:laplacian_zero_crossing}
+\end{equation}
+
+En tenant également compte du fait que la géométrie locale étudiée jusqu’à présent dans les propositions réalisées est subordonnée à une échelle particulière, il est proposé de travailler avec des descripteurs multi-échelles. En considérant l’échelle comme dans l’équation~\eqref{eq:scale_operator},
+
+\begin{equation}
+I_s=P_s(I),
+\label{eq:scale_operator}
+\end{equation}
+
+et, dans le cas linéaire, comme une convolution,
+
+\begin{equation}
+I_s=I\star h_s,
+\label{eq:scale_convolution}
+\end{equation}
+
+sous des hypothèses d’invariance et de propriété de semi-groupe, l’opérateur de changement d’échelle doit coïncider avec un noyau gaussien, c’est-à-dire
+
+\begin{equation}
+h_s=G_{\sqrt{2s}}.
+\label{eq:gaussian_kernel_scale}
+\end{equation}
+
+C’est pourquoi les espaces d’échelle linéaires sont identifiés à des espaces d’échelle gaussiens. En conséquence, les dérivées à l’échelle \(s\) s’obtiennent par convolution avec des dérivées de gaussienne,
+
+\begin{equation}
+\left(\frac{\partial^{i+j}I}{\partial x^i\partial y^j}\right)_s
+=
+I\star G^{(i,j)}_{\sqrt{2s}}.
+\label{eq:scale_derivatives}
+\end{equation}
+
+Par conséquent, l’incorporation de descripteurs ou de caractéristiques multi-échelles ne doit pas être comprise uniquement comme une stratégie consistant à ``essayer plusieurs tailles'', mais comme la manière correcte de définir une représentation locale cohérente. 
+
+Compte tenu de cela, et dans la recherche d’un descripteur qui conserve l’information chromatique, qui ajoute une information géométrique locale, qui introduise une structure multi-échelle, et qui conserve en outre une représentation relativement compacte, il est proposé d’utiliser le vecteur défini par l’équation~\eqref{eq:compact_descriptor} :
+
+\begin{equation}
+\mathbf{x}(p)=
+\begin{bmatrix}
+Cb(p)\\
+Cr(p)\\
+\|\nabla I\|_{s_1}(p)\\
+\Delta I_{s_1}(p)\\
+\det(H_I)_{s_1}(p)\\
+\|\nabla I\|_{s_2}(p)\\
+\Delta I_{s_2}(p)\\
+\det(H_I)_{s_2}(p)
+\end{bmatrix}.
+\label{eq:compact_descriptor}
+\end{equation}
+
+où les dérivées à l’échelle $s$ sont obtenues par convolution avec des dérivées de gaussienne.
+
+Ce vecteur combine une information photométrique et une information géométrique, et se révèle plus approprié pour la segmentation bayésienne de pixels qu’une représentation purement colorimétrique.
