@@ -20,5 +20,4 @@
 *.vrb
 *.xdv
 
-# Generated report PDF
-docs/rappport/*.pdf
+
