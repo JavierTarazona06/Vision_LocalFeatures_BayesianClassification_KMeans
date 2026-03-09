@@ -1,69 +1,127 @@
-import numpy as np
-import cv2
-import sys
-import os
+import argparse
+from pathlib import Path
 
+import cv2
 from matplotlib import pyplot as plt
 
-if len(sys.argv) != 2:
-  print ("Usage :",sys.argv[0],"<Image_in>")
-  sys.exit(2)
-else:
-  img_bgr=cv2.imread(sys.argv[1],-1)
-(h,w,c) = img_bgr.shape
-print("Dimension de l'image :",h,"lignes x",w,"colonnes x",c,"canaux")
 
-b,g,r = cv2.split(img_bgr) # On récupère les 3 composantes   
-img_rgb = cv2.merge([r,g,b]) # Convention matplotlib  
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Display and optionally save RGB/HSV/YCrCb component images."
+    )
+    parser.add_argument("image_path", help="Input image path.")
+    parser.add_argument(
+        "--space",
+        choices=["rgb", "hsv", "ycrcb", "all"],
+        default="all",
+        help="Color space to visualize.",
+    )
+    parser.add_argument(
+        "--save-dir",
+        default=None,
+        help="Directory where components are saved. Disabled if omitted.",
+    )
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="Do not open matplotlib windows (useful for non-GUI runs).",
+    )
+    return parser.parse_args()
 
-#Affichage des composantes RGB
-plt.subplot(221)
-plt.imshow(img_rgb)
-plt.title('Image couleur')
-plt.subplot(222)
-plt.imshow(r,cmap = 'gray')
-plt.title('Composante Rouge')
-plt.subplot(223)
-plt.imshow(g,cmap = 'gray')
-plt.title('Composante Verte')
-plt.subplot(224)
-plt.imshow(b,cmap = 'gray')
-plt.title('Composante Bleue')
-plt.show()
 
-img_hsv =  cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-h,s,v = cv2.split(img_hsv) # On récupère les 3 composantes
+def load_image(image_path):
+    img_bgr = cv2.imread(str(image_path), -1)
+    if img_bgr is None:
+        raise FileNotFoundError(f"Could not read image '{image_path}'.")
+    if img_bgr.ndim != 3 or img_bgr.shape[2] != 3:
+        raise ValueError("Input image must be a 3-channel color image.")
+    return img_bgr
 
-#Affichage des composantes HSV
-plt.subplot(221)
-plt.imshow(img_rgb)
-plt.title('Image couleur')
-plt.subplot(222)
-plt.imshow(h,cmap = 'hsv')
-plt.title('Composante Teinte')
-plt.subplot(223)
-plt.imshow(s,cmap = 'gray')
-plt.title('Composante Saturation')
-plt.subplot(224)
-plt.imshow(v,cmap = 'gray')
-plt.title('Composante Valeur')
-plt.show()
 
-img_yuv =  cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YUV)
-y,cr,cb = cv2.split(img_yuv) # On récupère les 3 composantes
+def build_space_data(img_bgr):
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    r, g, b = cv2.split(img_rgb)
+    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(img_hsv)
+    img_ycrcb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YCrCb)
+    y, cr, cb = cv2.split(img_ycrcb)
 
-#Affichage des composantes YUV
-plt.subplot(221)
-plt.imshow(img_rgb)
-plt.title('Image couleur')
-plt.subplot(222)
-plt.imshow(y,cmap = 'gray')
-plt.title('Composante Intensité')
-plt.subplot(223)
-plt.imshow(cr,cmap = 'gray')
-plt.title('Contraste Rouge-Cyan')
-plt.subplot(224)
-plt.imshow(cb,cmap = 'gray')
-plt.title('Contraste Bleu-Jaune')
-plt.show()
+    return {
+        "rgb": {
+            "original": img_rgb,
+            "channels": [("R", r, "gray"), ("G", g, "gray"), ("B", b, "gray")],
+        },
+        "hsv": {
+            "original": img_rgb,
+            "channels": [("H", h, "hsv"), ("S", s, "gray"), ("V", v, "gray")],
+        },
+        "ycrcb": {
+            "original": img_rgb,
+            "channels": [("Y", y, "gray"), ("Cr", cr, "gray"), ("Cb", cb, "gray")],
+        },
+    }
 
+
+def render_space(space_name, space_data):
+    figure, axes = plt.subplots(2, 2, figsize=(8, 8))
+    ax_list = axes.ravel()
+    ax_list[0].imshow(space_data["original"])
+    ax_list[0].set_title("Original")
+    ax_list[0].axis("off")
+
+    for index, (channel_name, channel_img, cmap_name) in enumerate(
+        space_data["channels"], start=1
+    ):
+        ax_list[index].imshow(channel_img, cmap=cmap_name)
+        ax_list[index].set_title(channel_name)
+        ax_list[index].axis("off")
+
+    figure.suptitle(space_name.upper(), fontsize=12)
+    figure.tight_layout()
+    return figure
+
+
+def save_space_outputs(base_output_dir, image_stem, space_name, space_data, figure):
+    output_dir = Path(base_output_dir) / image_stem / space_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    original_bgr = cv2.cvtColor(space_data["original"], cv2.COLOR_RGB2BGR)
+    cv2.imwrite(str(output_dir / "original.png"), original_bgr)
+    for channel_name, channel_img, _ in space_data["channels"]:
+        cv2.imwrite(str(output_dir / f"{channel_name}.png"), channel_img)
+    figure.savefig(output_dir / "figure.png", dpi=150)
+
+
+def main():
+    args = parse_args()
+    image_path = Path(args.image_path)
+    img_bgr = load_image(image_path)
+    height, width, channels = img_bgr.shape
+    print(
+        "Image size:",
+        height,
+        "rows x",
+        width,
+        "cols x",
+        channels,
+        "channels",
+    )
+
+    spaces = build_space_data(img_bgr)
+    selected_spaces = ["rgb", "hsv", "ycrcb"] if args.space == "all" else [args.space]
+    figures = []
+    for space_name in selected_spaces:
+        figure = render_space(space_name, spaces[space_name])
+        figures.append(figure)
+        if args.save_dir is not None:
+            save_space_outputs(args.save_dir, image_path.stem, space_name, spaces[space_name], figure)
+
+    if not args.no_show:
+        plt.show()
+    else:
+        for figure in figures:
+            plt.close(figure)
+
+
+if __name__ == "__main__":
+    main()
