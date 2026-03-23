@@ -20,7 +20,7 @@ sur l'image \texttt{img/Essex\_Faces/94/asamma.19.jpg}, issue du jeu de donn\'ee
 des visages. Les sorties ont \'et\'e sauvegard\'ees dans 
 \texttt{outputs/components/asamma.19/rgb}, 
 \texttt{outputs/components/asamma.19/hsv} et 
-\texttt{outputs/components/asamma.19/ycrcb} (Figure \ref{fig:face_components_spaces}). 
+\texttt{outputs/components/asamma.19/ycrcb} (voir Figure \ref{fig:face_components_spaces}). 
 Les fichiers \texttt{original.png} pr\'esents dans chacun de ces r\'epertoires correspondent \`a la m\^eme image source, tandis que les figures de synth\`ese permettent de comparer les d\'ecompositions dans les trois espaces colorim\'etriques.
 
 \begin{figure*}[htbp]
@@ -39,3 +39,27 @@ L'espace HSV s\'epare partiellement la couleur de la luminance via les composant
 L'espace YCrCb est le plus prometteur pour ce probl\`eme. La composante \(Y\) capture la luminance et donc la structure g\'en\'erale de la sc\`ene, tandis que \(Cr\) et \(Cb\) isolent mieux l'information chromatique li\'ee \`a la peau. Dans les r\'esultats obtenus, le visage reste relativement coh\'erent dans les composantes \(Cr\) et \(Cb\), alors que l'arri\`ere-plan et les cheveux se distinguent plus nettement. Cette d\'ecorr\'elation entre luminance et chrominance est favorable \`a l'apprentissage d'un mod\`ele bay\'esien plus robuste pour la d\'etection de la peau.
 
 En cons\'equence, YCrCb constitue le meilleur point de d\'epart pour construire un bon mod\`ele de d\'etection dans notre cas. Il existe cependant des opportunit\'es claires pour enrichir l'espace d'observation avec des caract\'eristiques locales personnalis\'ees. Une premi\`ere piste consiste \`a combiner \(Cb\) et \(Cr\) avec une mesure de structure locale, par exemple le gradient de \(Y\), afin d'introduire \`a la fois l'information de couleur de peau et l'information de contour. Une autre piste est d'utiliser des moyennes locales, des \'ecarts-types sur fen\^etre, ou des descripteurs de texture locale pour mieux distinguer la peau des cheveux, des ombres et de l'arri\`ere-plan. Cette id\'ee est coh\'erente avec l'extension \texttt{cbcr\_grad} d\'ej\`a pr\'esente dans le code, qui combine \(Cb\), \(Cr\) et \(|\nabla Y|\) pour enrichir la repr\'esentation locale des pixels.
+
+\subsubsection{Propres caractéristiques locales}
+
+Pour aller au-del\`a de l'utilisation des seules composantes de couleur,
+ nous avons ajout\'e une caract\'eristique locale de type 
+ \textit{gradient et chrominance}, not\'ee \texttt{cbcr\_grad}, 
+ et visualis\'ee avec une extension du script 
+ \texttt{Display\_Components.py}. Cette repr\'esentation combine 
+ les composantes \(Cb\) et \(Cr\), qui conservent l'information de 
+ chrominance li\'ee \`a la peau, avec la norme du gradient 
+ \(|\nabla Y|\), calcul\'ee sur la luminance. Les sorties 
+ correspondantes ont \'et\'e enregistr\'ees dans 
+ \texttt{outputs/components/asamma.19/cbcr\_grad} (voir Figure \ref{fig:face_cbcr_grad}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{../../outputs/components/asamma.19/cbcr_grad/figure.png}
+\caption{Visualisation de la caract\'eristique locale \texttt{cbcr\_grad} sur l'image \texttt{asamma.19.jpg} : image originale, \(Cb\), \(Cr\) et \(|\nabla Y|\).}
+\label{fig:face_cbcr_grad}
+\end{figure}
+
+Les composantes \(Cb\) et \(Cr\) gardent une bonne coh\'erence sur les zones de peau, comme dans l'espace YCrCb, mais l'ajout de \(|\nabla Y|\) fait appara\^itre plus nettement les contours et transitions locales significatives : bord du visage, yeux, bouche, fronti\`eres entre la peau et les cheveux, ainsi qu'entre le visage et l'arri\`ere-plan. Par rapport \`a YCrCb seul, cette combinaison introduit donc une information de structure locale sans quitter une repr\'esentation compacte \`a trois dimensions.
+
+Cette caract\'eristique est plus favorable \`a un mod\`ele bay\'esien de d\'etection peau / non-peau, car elle aide \`a mieux distinguer les r\'egions ambigu\"es o\`u la couleur seule ne suffit pas, en particulier sur les fronti\`eres et dans les zones partiellement ombr\'ees. Sa limite est que le gradient r\'eagit aussi aux ombres, \`a certaines textures et aux accessoires. En pratique, cela signifie que les exemples n\'egatifs utilis\'es pendant l'apprentissage doivent couvrir non seulement le fond, mais aussi les cheveux, les yeux et les zones sombres du visage, afin d'\'eviter qu'un contour marqu\'e soit confondu avec une zone de peau.
