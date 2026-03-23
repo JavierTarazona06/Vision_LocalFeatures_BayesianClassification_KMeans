@@ -67,16 +67,20 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Interactive Bayesian training for skin vs non-skin pixel classification."
     )
-    parser.add_argument("train_image", help="Training image path.")
+    parser.add_argument(
+        "train_images",
+        nargs="+",
+        help="One or more training image paths.",
+    )
     parser.add_argument(
         "--test-image",
         default=None,
-        help="Optional test image path. Default: training image.",
+        help="Optional test image path. Default: first training image.",
     )
     parser.add_argument(
         "--features",
         choices=list_feature_spaces(),
-        default="ycrcb",
+        default="cbcr_grad",
         help="Feature space used for training and prediction.",
     )
     parser.add_argument(
@@ -108,11 +112,12 @@ def load_color_image(image_path):
     return img_bgr
 
 
-def annotate_training_samples(train_bgr, train_features):
+def annotate_single_image_samples(train_path, train_bgr, train_features, image_index, total_images):
     selector = ROISelector()
-    window_name = "Training image"
+    window_name = f"Training image ({image_index}/{total_images})"
     cv2.namedWindow(window_name)
     cv2.setMouseCallback(window_name, selector.callback)
+    exit_label = "next" if image_index < total_images else "done"
 
     feature_batches = []
     label_batches = []
@@ -123,8 +128,12 @@ def annotate_training_samples(train_bgr, train_features):
         ord("n"): ("non_skin", LABEL_NON_SKIN),
     }
 
+    print(f"Annotating image {image_index}/{total_images}: {train_path}")
     print("Instructions: draw ROI with mouse, press 'p' for skin, 'n' for non-skin.")
-    print("Press 'r' to reset current ROI and 'q' when annotation is done.")
+    if image_index < total_images:
+        print("Press 'r' to reset current ROI and 'q' to continue to the next image.")
+    else:
+        print("Press 'r' to reset current ROI and 'q' when annotation is done.")
 
     while True:
         display = train_bgr.copy()
@@ -135,7 +144,7 @@ def annotate_training_samples(train_bgr, train_features):
 
         cv2.putText(
             display,
-            "Draw ROI | p:skin n:non_skin r:reset q:train",
+            f"Image {image_index}/{total_images} | p:skin n:non_skin r:reset q:{exit_label}",
             (10, 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
@@ -183,9 +192,54 @@ def annotate_training_samples(train_bgr, train_features):
         selector.clear()
 
     cv2.destroyWindow(window_name)
+    if not feature_batches:
+        return None, None, roi_count, pixel_count
+
+    X_train = np.concatenate(feature_batches, axis=0)
+    y_train = np.concatenate(label_batches, axis=0)
+    return X_train, y_train, roi_count, pixel_count
+
+
+def annotate_training_samples(train_paths, feature_space):
+    feature_batches = []
+    label_batches = []
+    total_roi_count = {"skin": 0, "non_skin": 0}
+    total_pixel_count = {"skin": 0, "non_skin": 0}
+    feature_names = None
+
+    for image_index, train_path in enumerate(train_paths, start=1):
+        train_bgr = load_color_image(train_path)
+        print(
+            "Training image:",
+            train_bgr.shape[0],
+            "rows x",
+            train_bgr.shape[1],
+            "cols x",
+            train_bgr.shape[2],
+            "channels",
+        )
+        train_feature_image, current_feature_names = extract_feature_image(
+            train_bgr, feature_space
+        )
+        if feature_names is None:
+            feature_names = current_feature_names
+
+        X_image, y_image, roi_count, pixel_count = annotate_single_image_samples(
+            train_path,
+            train_bgr,
+            train_feature_image,
+            image_index,
+            len(train_paths),
+        )
+        if X_image is not None:
+            feature_batches.append(X_image)
+            label_batches.append(y_image)
+        for class_name in total_roi_count:
+            total_roi_count[class_name] += roi_count[class_name]
+            total_pixel_count[class_name] += pixel_count[class_name]
 
     if not feature_batches:
-        raise RuntimeError("No training samples were annotated.")
+        raise RuntimeError("No training samples were annotated across the selected training images.")
 
     X_train = np.concatenate(feature_batches, axis=0)
     y_train = np.concatenate(label_batches, axis=0)
@@ -193,7 +247,7 @@ def annotate_training_samples(train_bgr, train_features):
         raise RuntimeError(
             "Need both classes before training. Add at least one 'p' ROI and one 'n' ROI."
         )
-    return X_train, y_train, roi_count, pixel_count
+    return X_train, y_train, feature_names, total_roi_count, total_pixel_count
 
 
 def make_classifier(model_name, decision):
@@ -230,7 +284,7 @@ def build_overlay(image_bgr, mask):
 def save_outputs(
     args,
     run_dir,
-    train_path,
+    train_paths,
     test_path,
     mask,
     overlay,
@@ -249,7 +303,7 @@ def save_outputs(
 
     metadata = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
-        "train_image": str(train_path),
+        "train_images": [str(train_path) for train_path in train_paths],
         "test_image": str(test_path),
         "features": args.features,
         "feature_names": list(feature_names),
@@ -265,28 +319,19 @@ def save_outputs(
             "non_skin": int(np.sum(y_train == LABEL_NON_SKIN)),
         },
     }
+    if len(train_paths) == 1:
+        metadata["train_image"] = str(train_paths[0])
     with open(run_dir / "metadata.json", "w", encoding="utf-8") as metadata_file:
         json.dump(metadata, metadata_file, indent=2)
 
 
 def main():
     args = parse_args()
-    train_path = Path(args.train_image)
-    test_path = Path(args.test_image) if args.test_image is not None else train_path
+    train_paths = [Path(train_image) for train_image in args.train_images]
+    test_path = Path(args.test_image) if args.test_image is not None else train_paths[0]
 
-    train_bgr = load_color_image(train_path)
-    print(
-        "Training image:",
-        train_bgr.shape[0],
-        "rows x",
-        train_bgr.shape[1],
-        "cols x",
-        train_bgr.shape[2],
-        "channels",
-    )
-    train_feature_image, feature_names = extract_feature_image(train_bgr, args.features)
-    X_train, y_train, roi_count, pixel_count = annotate_training_samples(
-        train_bgr, train_feature_image
+    X_train, y_train, feature_names, roi_count, pixel_count = annotate_training_samples(
+        train_paths, args.features
     )
 
     classifier = make_classifier(args.model, args.decision)
@@ -305,7 +350,7 @@ def main():
     save_outputs(
         args,
         run_dir,
-        train_path,
+        train_paths,
         test_path,
         mask,
         overlay,

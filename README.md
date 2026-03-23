@@ -17,7 +17,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Visualize and save color components (RGB, HSV, YCrCb):
+3. Visualize and save color components (RGB, HSV, YCrCb, cbcr_grad):
 
 ```bash
 python3 src/Display_Components.py img/Essex_Faces/94/asamma.19.jpg --space all --save-dir outputs/components
@@ -26,9 +26,15 @@ python3 src/Display_Components.py img/Essex_Faces/94/asamma.19.jpg --space all -
 4. Train and test Bayesian pixel classification:
 
 ```bash
-python3 src/Bayes_Model_Training.py img/Essex_Faces/94/asamma.19.jpg --features ycrcb --model qda --decision map --test-image img/Essex_Faces/96/arwebb.19.jpg
+python3 src/Bayes_Model_Training.py img/Essex_Faces/94/asamma.19.jpg --features cbcr_grad --model qda --decision map --test-image img/Essex_Faces/96/arwebb.19.jpg
+```
+
+5. Optional multi-image training in one run:
+
+```bash
+python3 src/Bayes_Model_Training.py img/Essex_Faces/94/asamma.19.jpg img/Essex_Faces/94/ajones.19.jpg --features cbcr_grad --model qda --decision map --test-image img/Essex_Faces/96/arwebb.19.jpg
 ```
 
 Notes:
 - During training, draw rectangular RoIs with the mouse.
-- Press `p` for skin, `n` for non-skin, and `q` to finish training.
+- Press `p` for skin, `n` for non-skin, `r` to reset the current RoI, and `q` to move to the next training image or finish on the last one.
