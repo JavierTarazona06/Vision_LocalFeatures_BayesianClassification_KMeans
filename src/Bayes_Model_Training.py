@@ -1,5 +1,6 @@
 import argparse
 import json
+import pickle
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from features import extract_feature_image, flatten_feature_image, list_feature_
 
 LABEL_SKIN = 1
 LABEL_NON_SKIN = -1
+TRAINED_MODEL_FILENAME = "trained_model.pkl"
 
 
 class ROISelector:
@@ -69,7 +71,7 @@ def parse_args():
     )
     parser.add_argument(
         "train_images",
-        nargs="+",
+        nargs="*",
         help="One or more training image paths.",
     )
     parser.add_argument(
@@ -100,7 +102,20 @@ def parse_args():
         default="outputs/bayes",
         help="Base output directory for predictions and metadata.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--trained",
+        default=None,
+        help=(
+            "Path to a previously saved trained model bundle or to a run directory "
+            f"containing {TRAINED_MODEL_FILENAME}."
+        ),
+    )
+    args = parser.parse_args()
+    if args.trained is None and not args.train_images:
+        parser.error("Provide at least one training image or pass --trained.")
+    if args.trained is not None and args.train_images:
+        parser.error("Do not pass training images when using --trained.")
+    return args
 
 
 def load_color_image(image_path):
@@ -257,6 +272,67 @@ def make_classifier(model_name, decision):
     return GaussianNB(priors=priors)
 
 
+def build_training_info(
+    train_paths,
+    feature_names,
+    features,
+    model_name,
+    decision,
+    roi_count,
+    pixel_count,
+    X_train,
+    y_train,
+):
+    training_info = {
+        "train_images": [str(train_path) for train_path in train_paths],
+        "features": features,
+        "feature_names": list(feature_names),
+        "model": model_name,
+        "decision": decision,
+        "class_labels": {"skin": LABEL_SKIN, "non_skin": LABEL_NON_SKIN},
+        "roi_count": roi_count,
+        "pixel_count": pixel_count,
+        "train_samples": int(X_train.shape[0]),
+        "feature_dimension": int(X_train.shape[1]),
+        "train_label_distribution": {
+            "skin": int(np.sum(y_train == LABEL_SKIN)),
+            "non_skin": int(np.sum(y_train == LABEL_NON_SKIN)),
+        },
+    }
+    if len(train_paths) == 1:
+        training_info["train_image"] = str(train_paths[0])
+    return training_info
+
+
+def resolve_trained_model_path(trained_path):
+    trained_path = Path(trained_path)
+    if trained_path.is_dir():
+        trained_path = trained_path / TRAINED_MODEL_FILENAME
+    return trained_path
+
+
+def save_trained_model_bundle(run_dir, classifier, training_info):
+    bundle = {
+        "classifier": classifier,
+        "training_info": training_info,
+    }
+    model_path = run_dir / TRAINED_MODEL_FILENAME
+    with open(model_path, "wb") as model_file:
+        pickle.dump(bundle, model_file)
+    return model_path
+
+
+def load_trained_model_bundle(trained_path):
+    model_path = resolve_trained_model_path(trained_path)
+    if not model_path.exists():
+        raise FileNotFoundError(f"Could not find trained model bundle at '{model_path}'.")
+    with open(model_path, "rb") as model_file:
+        bundle = pickle.load(model_file)
+    if "classifier" not in bundle or "training_info" not in bundle:
+        raise ValueError(f"Invalid trained model bundle '{model_path}'.")
+    return model_path, bundle["classifier"], bundle["training_info"]
+
+
 def predict_mask_and_probability(classifier, feature_image):
     height, width = feature_image.shape[:2]
     flat_features = flatten_feature_image(feature_image)
@@ -282,18 +358,13 @@ def build_overlay(image_bgr, mask):
 
 
 def save_outputs(
-    args,
     run_dir,
-    train_paths,
     test_path,
     mask,
     overlay,
     probability_map,
-    feature_names,
-    roi_count,
-    pixel_count,
-    X_train,
-    y_train,
+    training_info,
+    trained_model_path=None,
 ):
     run_dir.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(run_dir / "mask.png"), mask)
@@ -303,65 +374,75 @@ def save_outputs(
 
     metadata = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
-        "train_images": [str(train_path) for train_path in train_paths],
         "test_image": str(test_path),
-        "features": args.features,
-        "feature_names": list(feature_names),
-        "model": args.model,
-        "decision": args.decision,
-        "class_labels": {"skin": LABEL_SKIN, "non_skin": LABEL_NON_SKIN},
-        "roi_count": roi_count,
-        "pixel_count": pixel_count,
-        "train_samples": int(X_train.shape[0]),
-        "feature_dimension": int(X_train.shape[1]),
-        "train_label_distribution": {
-            "skin": int(np.sum(y_train == LABEL_SKIN)),
-            "non_skin": int(np.sum(y_train == LABEL_NON_SKIN)),
-        },
+        **training_info,
     }
-    if len(train_paths) == 1:
-        metadata["train_image"] = str(train_paths[0])
+    if trained_model_path is not None:
+        metadata["trained_model_path"] = str(trained_model_path)
+        metadata["loaded_from_trained"] = True
     with open(run_dir / "metadata.json", "w", encoding="utf-8") as metadata_file:
         json.dump(metadata, metadata_file, indent=2)
 
 
 def main():
     args = parse_args()
-    train_paths = [Path(train_image) for train_image in args.train_images]
-    test_path = Path(args.test_image) if args.test_image is not None else train_paths[0]
+    trained_model_path = None
 
-    X_train, y_train, feature_names, roi_count, pixel_count = annotate_training_samples(
-        train_paths, args.features
-    )
+    if args.trained is None:
+        train_paths = [Path(train_image) for train_image in args.train_images]
+        test_path = Path(args.test_image) if args.test_image is not None else train_paths[0]
 
-    classifier = make_classifier(args.model, args.decision)
-    classifier.fit(X_train, y_train)
+        X_train, y_train, feature_names, roi_count, pixel_count = annotate_training_samples(
+            train_paths, args.features
+        )
+
+        classifier = make_classifier(args.model, args.decision)
+        classifier.fit(X_train, y_train)
+        training_info = build_training_info(
+            train_paths,
+            feature_names,
+            args.features,
+            args.model,
+            args.decision,
+            roi_count,
+            pixel_count,
+            X_train,
+            y_train,
+        )
+    else:
+        trained_model_path, classifier, training_info = load_trained_model_bundle(args.trained)
+        train_paths = [Path(train_image) for train_image in training_info["train_images"]]
+        default_test_path = train_paths[0]
+        test_path = Path(args.test_image) if args.test_image is not None else default_test_path
 
     test_bgr = load_color_image(test_path)
-    test_feature_image, _ = extract_feature_image(test_bgr, args.features)
+    test_feature_image, _ = extract_feature_image(test_bgr, training_info["features"])
     mask, probability_map = predict_mask_and_probability(classifier, test_feature_image)
     overlay = build_overlay(test_bgr, mask)
 
     run_dir = (
         Path(args.output_dir)
         / test_path.stem
-        / f"{args.features}_{args.model}_{args.decision}"
+        / (
+            f"{training_info['features']}_"
+            f"{training_info['model']}_"
+            f"{training_info['decision']}"
+        )
     )
     save_outputs(
-        args,
         run_dir,
-        train_paths,
         test_path,
         mask,
         overlay,
         probability_map,
-        feature_names,
-        roi_count,
-        pixel_count,
-        X_train,
-        y_train,
+        training_info,
+        trained_model_path=trained_model_path,
     )
+    if args.trained is None:
+        trained_model_path = save_trained_model_bundle(run_dir, classifier, training_info)
     print(f"Outputs saved in: {run_dir}")
+    if trained_model_path is not None:
+        print(f"Trained model bundle: {trained_model_path}")
 
     cv2.imshow("Predicted mask", mask)
     cv2.imshow("Skin overlay", overlay)
