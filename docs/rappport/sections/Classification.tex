@@ -293,3 +293,35 @@ Le cas \(K=4\) est clairement moins bon. Le masque fait appara\^itre davantage d
 Le cas \(K=8\) est le meilleur des trois. La majorit\'e des r\'egions d\'etect\'ees comme peau correspondent effectivement \`a de la peau, et le probl\`eme du bord des cheveux class\'e comme peau est nettement r\'eduit. L'explication la plus probable est qu'un nombre plus \'elev\'e de clusters permet de s\'eparer plus finement des sous-groupes proches dans l'espace YCrCb. La distance euclidienne utilis\'ee par K-Means reste la m\^eme, mais l'augmentation de \(K\) fournit une partition plus fine de l'espace d'observation et distingue mieux les variations de luminance et de chrominance entre peau, cheveux, fond et accessoires.
 
 En comparant \(K=4\), \(K=6\) et \(K=8\), on observe donc une progression nette : \(K=4\) sous-segmente les donn\'ees, \(K=6\) fournit un compromis d\'ej\`a correct, et \(K=8\) s\'epare plus proprement les groupes pertinents pour cette image. Dans cette exp\'erimentation, le meilleur choix est donc \(K=8\). Ce r\'esultat ne doit pas \^etre interpr\'et\'e comme une loi g\'en\'erale valable pour toute image, mais il reste coh\'erent avec l'id\'ee th\'eorique selon laquelle un nombre de clusters plus \'elev\'e peut mieux s\'eparer des composantes proches lorsque l'espace d'observation choisi est d\'ej\`a adapt\'e \`a la t\^ache.
+
+\subsubsection{\underline{\textbf{Analyse de robustesse}}}
+
+Les exp\'eriences pr\'ec\'edentes ont conduit \`a retenir l'espace YCrCb et \(K=8\) comme meilleur compromis sur l'image \texttt{asamma.19}. Cela ne garantit cependant pas une bonne transf\'erabilit\'e vers d'autres images. Dans un sch\'ema strictement \textit{train-test}, K-Means n'est pas naturellement con\c{c}u pour apprendre une classe s\'emantique stable comme \textit{peau / non-peau} sur une image, puis la r\'eutiliser telle quelle sur une autre, car la distribution des pixels peut changer fortement d'une sc\`ene \`a l'autre. La difficult\'e n'est donc pas seulement le choix de \(K\), mais aussi la stabilit\'e de la signification des clusters lorsque l'image de test s'\'ecarte de l'image d'apprentissage.
+
+Une autre limite m\'ethodologique appara\^it imm\'ediatement. Si l'on applique K-Means ind\'ependamment \`a chaque image, il faut ensuite indiquer manuellement quels clusters correspondent \`a la peau, ce qui fait perdre une partie du caract\`ere r\'eellement non supervis\'e de l'approche. Les m\'etadonn\'ees obtenues dans nos essais illustrent bien ce point : pour \texttt{ajones.19}, les clusters retenus comme peau sont \(\{4,6\}\), alors que pour \texttt{acatsa.17}, ce sont \(\{0,5\}\). Le fait de devoir changer les identifiants d'une image \`a l'autre montre que la s\'emantique des clusters n'est pas stable ; K-Means regroupe des proximit\'es statistiques dans l'espace d'observation, et non des objets s\'emantiques invariants d'une sc\`ene \`a l'autre.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/ajones.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/ajones.19/ycrcb_k8_train_asamma.19/test_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/ajones.19/ycrcb_k8_train_asamma.19/test_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/ajones.19/ycrcb_k8_train_asamma.19/test_skin_overlay.png}
+\caption{Cas \texttt{ajones.19} avec YCrCb et \(K=8\), en r\'eutilisant les centres appris sur \texttt{asamma.19}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_robust_ajones}
+\end{figure*}
+
+Le cas \texttt{ajones.19} (figure \ref{fig:kmeans_robust_ajones}) montre que la peau est encore partiellement d\'etect\'ee, ce qui rend le r\'esultat exploitable, mais insuffisant pour une segmentation fiable. Le visage principal reste globalement rep\'er\'e, cependant le masque se confond encore avec des \'el\'ements non cutan\'es, en particulier une partie du v\^etement. L'explication la plus probable est que cette image reste relativement proche de \texttt{asamma.19}, de sorte que certaines zones de peau sont encore projet\'ees vers des clusters comparables. En revanche, les v\^etements et certaines r\'egions sombres poss\`edent eux aussi des signatures YCrCb assez proches de celles de la peau apprise. Comme K-Means ne dispose ni d'un mod\`ele probabiliste de classe ni d'un contexte spatial, ces ambigu\"it\'es restent difficiles \`a lever.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/96/acatsa.17.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/acatsa.17/ycrcb_k8_train_asamma.19/test_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/acatsa.17/ycrcb_k8_train_asamma.19/test_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/acatsa.17/ycrcb_k8_train_asamma.19/test_skin_overlay.png}
+\caption{Cas \texttt{acatsa.17} avec YCrCb et \(K=8\), en r\'eutilisant les centres appris sur \texttt{asamma.19}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_robust_acatsa}
+\end{figure*}
+
+Le cas \texttt{acatsa.17} (figure \ref{fig:kmeans_robust_acatsa}) se d\'egrade au contraire tr\`es fortement, au point que la segmentation devient peu fiable. Le fond et plusieurs r\'egions non cutan\'ees sont massivement absorb\'es dans la peau, ce qui d\'etruit la qualit\'e du r\'esultat final. Ce comportement s'explique naturellement par le changement de sc\`ene : le fond, l'illumination, le contraste global et la distribution des couleurs diff\`erent beaucoup plus de ceux de \texttt{asamma.19}. Les centres appris sur l'image d'entra\^inement ne repr\'esentent alors plus correctement la nouvelle distribution des pixels. Or K-Means repose uniquement sur des distances aux centres ; il est donc particuli\`erement sensible \`a ce changement de distribution.
+
+Ces deux exemples montrent que K-Means n'est pas vraiment recommand\'e comme mod\`ele \textit{train} \(\rightarrow\) \textit{test} pour ce probl\`eme si l'on cherche \`a transf\'erer directement des clusters de peau d'une image \`a l'autre. Une application image par image serait plus coh\'erente du point de vue du clustering, mais elle imposerait de d\'esigner manuellement, \`a chaque fois, quels clusters correspondent \`a la peau, ce qui r\'eduit fortement l'int\'er\^et d'un apprentissage non supervis\'e. Pour obtenir une meilleure robustesse, il faudrait apprendre sur un ensemble beaucoup plus large et plus vari\'e d'images, afin de limiter la sur-sp\'ecialisation observ\'ee ici. Cela ne suffirait pas \`a r\'esoudre tous les probl\`emes de g\'en\'eralisation, mais permettrait au moins d'\'eviter un mod\`ele qui sait surtout identifier tr\`es bien une seule image, \texttt{asamma.19}, et beaucoup moins bien les autres sc\`enes.
