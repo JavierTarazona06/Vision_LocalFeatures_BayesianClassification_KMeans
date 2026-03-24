@@ -263,3 +263,33 @@ Le cas YCrCb appara\^it comme le meilleur de cette comparaison initiale. La peau
 Le descripteur \texttt{cbcr\_grad}, pourtant prometteur dans le cadre bay\'esien supervis\'e, est ici moins convaincant avec K-Means. Le masque n'est pas uniforme : certaines zones de peau ne sont pas reconnues comme telles, et de petits trous de non-peau apparaissent \`a l'int\'erieur m\^eme du visage. La raison la plus probable est que le gradient, m\^eme normalis\'e, introduit une information de structure locale qui tend \`a scinder la peau selon l'intensit\'e des contours, des ombres et des transitions internes, plut\^ot que de regrouper toutes les zones cutan\'ees sur la seule base de leur chrominance. Dans un mod\`ele bay\'esien supervis\'e, cette information peut \^etre exploit\'ee positivement parce que l'apprentissage apprend quelles variations de gradient restent compatibles avec la peau. En revanche, dans un clustering non supervis\'e, K-Means ne dispose d'aucune information de classe et fragmente plus facilement la peau lorsqu'elle pr\'esente des variations locales de contour ou d'\'eclairement.
 
 En synth\`ese, les quatre essais montrent que tous les espaces d'observation ne sont pas \'egalement adapt\'es \`a une segmentation non supervis\'ee de la peau. HSV est clairement le plus bruit\'e, \texttt{cbcr\_grad} fragmente trop la peau dans ce cadre non supervis\'e, et RGB donne un r\'esultat d\'ej\`a tr\`es honorable mais un peu moins fin et moins stable que YCrCb. Le meilleur compromis est obtenu avec YCrCb, qui pr\'eserve mieux l'homog\'en\'eit\'e du visage, conserve davantage de d\'etail utile et limite les faux positifs \`a des zones localement ambigu\"es. Pour cette raison, YCrCb sera retenu comme meilleur espace d'observation pour les prochaines \'etapes de l'exp\'erimentation K-Means, avant d'\'etudier plus finement l'effet du nombre de classes \(K\).
+
+\subsubsection{\underline{\textbf{Choix de K}}}
+
+La figure \ref{fig:kmeans_ycrcb_initial} correspond au cas YCrCb avec \(K=6\). Ce r\'esultat constitue d\'ej\`a une base solide : la peau est globalement bien d\'etect\'ee et le visage reste coh\'erent dans son ensemble. Cependant, comme indiqu\'e dans la comparaison initiale, des faux positifs persistent encore au niveau du bord des cheveux et des boucles d'oreilles. Le choix de \(K\) doit donc permettre de d\'eterminer si une partition plus grossi\`ere ou, au contraire, plus fine de l'espace YCrCb permet d'am\'eliorer cette s\'eparation.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/asamma.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k4_train_asamma.19/train_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k4_train_asamma.19/train_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k4_train_asamma.19/train_skin_overlay.png}
+\caption{Cas YCrCb avec \(K=4\) sur \texttt{asamma.19.jpg}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_ycrcb_k4}
+\end{figure*}
+
+Le cas \(K=4\) est clairement moins bon. Le masque fait appara\^itre davantage de r\'egions non cutan\'ees absorb\'ees par la peau, notamment une partie du fond et des zones proches des yeux. La raison la plus probable est qu'avec un nombre trop faible de clusters, K-Means fusionne des populations de pixels qui devraient rester s\'epar\'ees. L'espace YCrCb reste pertinent, mais \(K=4\) conduit ici \`a une sous-segmentation : la peau, certaines zones d'ombre, une partie du fond et des r\'egions faciales non cutan\'ees tombent plus facilement dans les m\^emes groupes faute de granularit\'e suffisante.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/asamma.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k8_train_asamma.19/train_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k8_train_asamma.19/train_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k8_train_asamma.19/train_skin_overlay.png}
+\caption{Cas YCrCb avec \(K=8\) sur \texttt{asamma.19.jpg}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_ycrcb_k8}
+\end{figure*}
+
+Le cas \(K=8\) est le meilleur des trois. La majorit\'e des r\'egions d\'etect\'ees comme peau correspondent effectivement \`a de la peau, et le probl\`eme du bord des cheveux class\'e comme peau est nettement r\'eduit. L'explication la plus probable est qu'un nombre plus \'elev\'e de clusters permet de s\'eparer plus finement des sous-groupes proches dans l'espace YCrCb. La distance euclidienne utilis\'ee par K-Means reste la m\^eme, mais l'augmentation de \(K\) fournit une partition plus fine de l'espace d'observation et distingue mieux les variations de luminance et de chrominance entre peau, cheveux, fond et accessoires.
+
+En comparant \(K=4\), \(K=6\) et \(K=8\), on observe donc une progression nette : \(K=4\) sous-segmente les donn\'ees, \(K=6\) fournit un compromis d\'ej\`a correct, et \(K=8\) s\'epare plus proprement les groupes pertinents pour cette image. Dans cette exp\'erimentation, le meilleur choix est donc \(K=8\). Ce r\'esultat ne doit pas \^etre interpr\'et\'e comme une loi g\'en\'erale valable pour toute image, mais il reste coh\'erent avec l'id\'ee th\'eorique selon laquelle un nombre de clusters plus \'elev\'e peut mieux s\'eparer des composantes proches lorsque l'espace d'observation choisi est d\'ej\`a adapt\'e \`a la t\^ache.
