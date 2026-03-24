@@ -162,3 +162,45 @@ Dans le cas C, le mod\`ele na\"if donne un r\'esultat nettement meilleur que le 
 Il est important de pr\'eciser que le caract\`ere ``na\"if'' du mod\`ele ne signifie pas une absence de corr\'elation entre les pixels de l'image. L'hypoth\`ese porte sur l'ind\'ependance conditionnelle des composantes du vecteur d'observation, c'est-\`a-dire ici \(Cb\), \(Cr\) et \(|\nabla Y|\), \`a l'int\'erieur d'une m\^eme classe. Le mod\`ele gaussien multidimensionnel, au contraire, prend explicitement en compte les corr\'elations entre ces composantes.
 
 En comparant les deux approches, le mod\`ele gaussien na\"if pr\'esente plusieurs avantages : il est plus simple, il semble moins sensible \`a un surapprentissage de corr\'elations accidentelles, et il se montre plus robuste dans certains cas de changement de domaine comme \texttt{acatsa.17}. Il peut aussi r\'eduire certains faux positifs, comme sur les v\^etements dans le cas A. En revanche, il perd l'information sur les corr\'elations r\'eelles entre \(Cb\), \(Cr\) et \(|\nabla Y|\), ce qui peut limiter sa pr\'ecision lorsque ces d\'ependances sont effectivement discriminantes. On en conclut qu'aucun des deux mod\`eles ne domine syst\'ematiquement l'autre : avec une seule image d'apprentissage, le mod\`ele na\"if peut mieux g\'en\'eraliser, tandis que le mod\`ele gaussien multidimensionnel peut mieux exploiter la structure des donn\'ees lorsque les statistiques de test restent proches de celles observ\'ees \`a l'entra\^inement.
+
+\subsection{\underline{\textbf{Classification non supervisée des pixels par K-Means}}}
+
+Par rapport \`a l'approche bay\'esienne supervis\'ee \'etudi\'ee pr\'ec\'edemment, K-Means constitue une alternative non supervis\'ee int\'eressante pour la segmentation de la peau. Son principal avantage est qu'il ne repose pas sur une annotation manuelle pr\'ealable des pixels : il r\'eduit donc la charge de supervision et limite les erreurs humaines li\'ees au choix des RoI d'apprentissage. En contrepartie, les groupes obtenus par clustering ne correspondent pas n\'ecessairement \`a des classes s\'emantiques directement exploitables comme \textit{peau} et \textit{non-peau}. Selon l'espace d'observation choisi, l'algorithme peut aussi produire des partitions davantage li\'ees \`a l'illumination, au fond ou aux contrastes locaux qu'\`a la structure du visage elle-m\^eme. C'est pourquoi une phase d'exp\'erimentation est n\'ecessaire, afin d'identifier l'espace d'observation et le nombre de clusters les plus pertinents avant de tirer des conclusions sur l'int\'er\^et pratique de cette approche.
+
+\subsubsection{\underline{\textbf{Protocole expérimental}}}
+
+Le script \texttt{KMeans\_Clustering.py} a d'abord \'et\'e une d\'emonstration minimale du clustering sur une image unique en espace BGR. Il a ensuite \'et\'e adapt\'e pour devenir un outil d'exp\'erimentation reproductible, mieux align\'e sur les besoins du TP. L'interface accepte maintenant une image d'apprentissage, une image de test optionnelle, le choix de l'espace d'observation, le nombre de classes \(K\), la s\'election manuelle des clusters interpr\'et\'es comme peau, un r\'epertoire de sortie et un mode sans affichage. Le point de d\'epart retenu dans le script est \texttt{ycrcb} avec \(K=6\), mais ce choix doit justement \^etre valid\'e par les exp\'eriences.
+
+L'extraction des caract\'eristiques a \'et\'e unifi\'ee avec le module \texttt{features.py}, ce qui permet de comparer dans un m\^eme cadre les espaces \texttt{rgb}, \texttt{hsv}, \texttt{ycrcb} et le descripteur local \texttt{cbcr\_grad}. Cette unification garantit que les vecteurs d'observation manipul\'es par K-Means sont construits de mani\`ere coh\'erente avec les autres scripts du projet. Dans le cas particulier de \texttt{cbcr\_grad}, une normalisation interne fond\'ee uniquement sur l'image d'apprentissage est appliqu\'ee avant le clustering et la pr\'ediction, afin d'\'eviter que la composante \(|\nabla Y|\), de plus grande amplitude, ne domine artificiellement la distance euclidienne.
+
+Le flux de calcul a lui aussi \'et\'e \'etendu. Le mod\`ele K-Means est appris sur l'image \texttt{train}, puis les m\^emes centres de clusters sont r\'eutilis\'es pour pr\'edire les labels sur l'image \texttt{test}, ce qui rend la comparaison inter-images coh\'erente. Les sorties sont sauvegard\'ees automatiquement dans un r\'epertoire de la forme \texttt{outputs/kmeans/<test\_stem>/} puis \texttt{<features>\_k<k>\_train\_<train\_stem>/}. On y retrouve notamment \texttt{train\_labels.png}, \texttt{test\_labels.png}, \texttt{centers.json} et \texttt{metadata.json}. Lorsque les identifiants des clusters de peau sont fournis, le script enregistre aussi les masques binaires et les superpositions correspondantes pour l'image d'apprentissage et l'image de test.
+
+Le protocole exp\'erimental suit donc deux passes compl\'ementaires. Dans un premier temps, on observe les cartes de labels et les centres de clusters afin d'identifier quels groupes semblent correspondre \`a la peau. Dans un second temps, on relance le script en indiquant manuellement les identifiants de clusters retenus pour produire les masques de peau et comparer les r\'esultats selon l'espace d'observation et le nombre de classes. Ces étapes sont presentées dans la table \ref{tab:kmeans_protocol}.
+
+\begin{table*}[!t]
+\centering
+\scriptsize
+\caption{Protocole exp\'erimental propos\'e pour l'\'evaluation de K-Means. La premi\`ere \'etape sert \`a choisir le meilleur espace d'observation, la deuxi\`eme \`a ajuster le nombre de classes \(K\), et la troisi\`eme \`a \'evaluer la capacit\'e de g\'en\'eralisation sur des visages non utilis\'es pour l'apprentissage.}
+\label{tab:kmeans_protocol}
+\begin{tabular}{|p{2.6cm}|p{1.9cm}|p{1.9cm}|p{2.8cm}|p{1.2cm}|p{5.4cm}|}
+\hline
+\textbf{Phase} & \textbf{Train} & \textbf{Test} & \textbf{Espace d'observation} & \textbf{K} & \textbf{Objectif} \\
+\hline
+Comparaison initiale & \texttt{asamma.19} & \texttt{asamma.19} & \texttt{rgb} & 6 & Comparer la s\'eparabilit\'e obtenue avec RGB. \\
+\hline
+Comparaison initiale & \texttt{asamma.19} & \texttt{asamma.19} & \texttt{hsv} & 6 & Comparer la s\'eparabilit\'e obtenue avec HSV. \\
+\hline
+Comparaison initiale & \texttt{asamma.19} & \texttt{asamma.19} & \texttt{ycrcb} & 6 & Comparer la s\'eparabilit\'e obtenue avec YCrCb. \\
+\hline
+Comparaison initiale & \texttt{asamma.19} & \texttt{asamma.19} & \texttt{cbcr\_grad} & 6 & Comparer la s\'eparabilit\'e obtenue avec le descripteur local enrichi. \\
+\hline
+Choix de \(K\) & \texttt{asamma.19} & \texttt{asamma.19} & meilleur espace & 4, 6, 8 & S\'electionner le nombre de clusters le plus pertinent. \\
+\hline
+G\'en\'eralisation & \texttt{asamma.19} & \texttt{ajones.19} & meilleur espace & meilleur \(K\) & Tester un cas proche de l'image d'apprentissage. \\
+\hline
+G\'en\'eralisation & \texttt{asamma.19} & \texttt{acatsa.17} & meilleur espace & meilleur \(K\) & Tester un cas plus diff\'erent et \'evaluer la robustesse. \\
+\hline
+\end{tabular}
+\end{table*}
+
+Ce protocole permet de s\'eparer clairement trois questions. La premi\`ere est le choix du meilleur espace d'observation pour isoler la peau sans supervision. La deuxi\`eme est l'influence du nombre de classes sur la fragmentation ou, au contraire, la fusion excessive des r\'egions de peau et de non-peau. La troisi\`eme est la capacit\'e du mod\`ele appris sur \texttt{asamma.19} \`a conserver une interpr\'etation coh\'erente des clusters lorsqu'il est appliqu\'e \`a \texttt{ajones.19} puis \`a \texttt{acatsa.17}, deux cas de g\'en\'eralisation de difficult\'e diff\'erente.
