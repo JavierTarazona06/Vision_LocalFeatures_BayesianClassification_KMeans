@@ -204,3 +204,57 @@ G\'en\'eralisation & \texttt{asamma.19} & \texttt{acatsa.17} & meilleur espace &
 \end{table*}
 
 Ce protocole permet de s\'eparer clairement trois questions. La premi\`ere est le choix du meilleur espace d'observation pour isoler la peau sans supervision. La deuxi\`eme est l'influence du nombre de classes sur la fragmentation ou, au contraire, la fusion excessive des r\'egions de peau et de non-peau. La troisi\`eme est la capacit\'e du mod\`ele appris sur \texttt{asamma.19} \`a conserver une interpr\'etation coh\'erente des clusters lorsqu'il est appliqu\'e \`a \texttt{ajones.19} puis \`a \texttt{acatsa.17}, deux cas de g\'en\'eralisation de difficult\'e diff\'erente.
+
+\subsubsection{\underline{\textbf{Comparaison initiale}}}
+
+La comparaison initiale a \'et\'e r\'ealis\'ee avec \texttt{train = test = asamma.19} et \(K = 6\), afin d'\'evaluer la qualit\'e intrins\`eque des regroupements obtenus sur une image unique avant toute g\'en\'eralisation. Pour chaque espace d'observation, les clusters de peau ont \'et\'e choisis manuellement \`a partir de \texttt{train\_labels.png} et \texttt{centers.json}. Les groupes retenus sont les suivants : \texttt{rgb} avec les clusters \(\{2,3,5\}\), \texttt{hsv} avec \(\{0,1,3\}\), \texttt{ycrcb} avec \(\{1,3,4\}\), et \texttt{cbcr\_grad} avec \(\{2,3\}\). Cette premi\`ere \'etape sert donc \`a comparer la lisibilit\'e des partitions et \`a estimer si les zones de peau forment ou non des groupes suffisamment coh\'erents pour \^etre exploit\'es dans la suite.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/asamma.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/rgb_k6_train_asamma.19/train_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/rgb_k6_train_asamma.19/train_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/rgb_k6_train_asamma.19/train_skin_overlay.png}
+\caption{Cas RGB sur \texttt{asamma.19.jpg}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_rgb_initial}
+\end{figure*}
+
+Le cas RGB est surprenamment bon et reste relativement proche du comportement obtenu avec YCrCb, m\^eme si la d\'etection est un peu moins nette dans les d\'etails fins. Sur cette image particuli\`ere, le contraste global entre le fond vert, les cheveux sombres et les zones de peau suffit d\'ej\`a \`a produire des groupes utiles dans l'espace \((R,G,B)\). En revanche, RGB m\'elange directement luminance et chrominance, ce qui rend les clusters plus sensibles aux ombres et aux variations d'\'eclairage \`a l'int\'erieur du visage. Les bords des cheveux et les boucles d'oreilles sont ainsi parfois absorb\'es dans la peau, car leurs couleurs locales ou certains pixels de transition restent proches de celles de r\'egions cutan\'ees dans cet espace. Un raffinement peut passer par un \(K\) plus \'elev\'e pour s\'eparer certaines zones ambigu\"es, mais aussi par des descripteurs plus discriminants, car la seule distance euclidienne de K-Means ne garantit pas une s\'eparation s\'emantique parfaite.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/asamma.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/hsv_k6_train_asamma.19/train_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/hsv_k6_train_asamma.19/train_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/hsv_k6_train_asamma.19/train_skin_overlay.png}
+\caption{Cas HSV sur \texttt{asamma.19.jpg}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_hsv_initial}
+\end{figure*}
+
+Le cas HSV est le moins convaincant des quatre. Le masque est tr\`es bruit\'e et fait appara\^itre plusieurs petites zones isol\'ees class\'ees comme peau alors qu'elles ne correspondent pas \`a des r\'egions cutan\'ees coh\'erentes. L'explication la plus probable est que la composante \(H\) devient instable dans les zones sombres ou faiblement satur\'ees, exactement comme on l'avait d\'ej\`a observ\'e pendant l'analyse exploratoire des composantes. De plus, la distance euclidienne appliqu\'ee directement sur \((H,S,V)\) n'est pas id\'eale, car la teinte est une variable circulaire et non une grandeur lin\'eaire classique. Cette combinaison conduit K-Means \`a fragmenter davantage les r\'egions de peau et \`a introduire des faux positifs dispers\'es, ce qui explique le caract\`ere tr\`es bruit\'e du r\'esultat.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/asamma.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k6_train_asamma.19/train_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k6_train_asamma.19/train_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/ycrcb_k6_train_asamma.19/train_skin_overlay.png}
+\caption{Cas YCrCb sur \texttt{asamma.19.jpg}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_ycrcb_initial}
+\end{figure*}
+
+Le cas YCrCb appara\^it comme le meilleur de cette comparaison initiale. La peau y est mieux distingu\'ee, avec une segmentation plus homog\`ene et davantage de d\'etail sur le visage. Cette qualit\'e s'explique par la s\'eparation explicite entre la luminance \(Y\) et les composantes de chrominance \(Cr\) et \(Cb\), ce qui permet \`a K-Means de mieux regrouper les pixels cutan\'es malgr\'e les variations d'\'eclairage internes. Le visage reste ainsi plus coh\'erent tout en conservant des structures fines plus lisibles. On observe encore quelques confusions au niveau du bord des cheveux et des boucles d'oreilles, car K-Means ne tient compte ni du contexte spatial ni d'une connaissance s\'emantique de l'objet \`a segmenter : il ne voit que la proximit\'e des pixels dans l'espace d'observation. Un raffinement pourra donc passer par un \(K\) plus \'elev\'e, mais aussi par des descripteurs compl\'ementaires ou par un post-traitement spatial.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.24\textwidth]{../../img/Essex_Faces/94/asamma.19.jpg}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/cbcr_grad_k6_train_asamma.19/train_labels.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/cbcr_grad_k6_train_asamma.19/train_skin_mask.png}\hfill
+\includegraphics[width=0.24\textwidth]{../../outputs/kmeans/asamma.19/cbcr_grad_k6_train_asamma.19/train_skin_overlay.png}
+\caption{Cas \texttt{cbcr\_grad} sur \texttt{asamma.19.jpg}. De gauche \`a droite : image originale, labels K-Means, masque des clusters interpr\'et\'es comme peau et superposition finale.}
+\label{fig:kmeans_cbcrgrad_initial}
+\end{figure*}
+
+Le descripteur \texttt{cbcr\_grad}, pourtant prometteur dans le cadre bay\'esien supervis\'e, est ici moins convaincant avec K-Means. Le masque n'est pas uniforme : certaines zones de peau ne sont pas reconnues comme telles, et de petits trous de non-peau apparaissent \`a l'int\'erieur m\^eme du visage. La raison la plus probable est que le gradient, m\^eme normalis\'e, introduit une information de structure locale qui tend \`a scinder la peau selon l'intensit\'e des contours, des ombres et des transitions internes, plut\^ot que de regrouper toutes les zones cutan\'ees sur la seule base de leur chrominance. Dans un mod\`ele bay\'esien supervis\'e, cette information peut \^etre exploit\'ee positivement parce que l'apprentissage apprend quelles variations de gradient restent compatibles avec la peau. En revanche, dans un clustering non supervis\'e, K-Means ne dispose d'aucune information de classe et fragmente plus facilement la peau lorsqu'elle pr\'esente des variations locales de contour ou d'\'eclairement.
+
+En synth\`ese, les quatre essais montrent que tous les espaces d'observation ne sont pas \'egalement adapt\'es \`a une segmentation non supervis\'ee de la peau. HSV est clairement le plus bruit\'e, \texttt{cbcr\_grad} fragmente trop la peau dans ce cadre non supervis\'e, et RGB donne un r\'esultat d\'ej\`a tr\`es honorable mais un peu moins fin et moins stable que YCrCb. Le meilleur compromis est obtenu avec YCrCb, qui pr\'eserve mieux l'homog\'en\'eit\'e du visage, conserve davantage de d\'etail utile et limite les faux positifs \`a des zones localement ambigu\"es. Pour cette raison, YCrCb sera retenu comme meilleur espace d'observation pour les prochaines \'etapes de l'exp\'erimentation K-Means, avant d'\'etudier plus finement l'effet du nombre de classes \(K\).
